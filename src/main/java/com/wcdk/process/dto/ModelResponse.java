@@ -1,16 +1,17 @@
 package com.wcdk.process.dto;
 
+import lombok.Builder;
 import lombok.Data;
 
 import java.util.Date;
 
 /**
- * 模型响应。
- *
- * @author WCDK
- * @date 2026/7/13
- */
+ * @auther WCDK
+ * @date 2026/7/16
+ * @version 1.0
+ **/
 @Data
+@Builder
 public class ModelResponse {
 
     private String modelId;
@@ -20,6 +21,8 @@ public class ModelResponse {
     private String modelKey;
 
     private String category;
+
+    private String processBeanName;
 
     private Integer version;
 

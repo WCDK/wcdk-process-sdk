@@ -1,19 +1,22 @@
 package com.wcdk.process.dto;
 
+import lombok.Builder;
 import lombok.Data;
 
 /**
- * 任务响应。
- *
- * @author WCDK
- * @date 2026/7/13
- */
+ * @auther WCDK
+ * @date 2026/7/16
+ * @version 1.0
+ **/
 @Data
+@Builder
 public class TaskResponse {
 
     private String taskId;
 
     private String taskName;
+
+    private String currentTaskName;
 
     private String assignee;
 

@@ -1,0 +1,126 @@
+package com.wcdk.process;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.wcdk.process.config.WcdkProcessAuthInterceptor;
+import com.wcdk.process.config.WcdkProcessWebMvcConfigurer;
+import com.wcdk.process.controller.WcdkProcessBeanController;
+import com.wcdk.process.support.ProcessBeanRegistry;
+import org.springframework.boot.ApplicationRunner;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.AutoConfigureOrder;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.ApplicationContext;
+import org.springframework.core.Ordered;
+
+import java.net.http.HttpClient;
+import java.time.Duration;
+
+/**
+ * @auther WCDK
+ * @date 2026/7/16
+ * @version 1.0
+ **/
+@AutoConfiguration
+@EnableConfigurationProperties(WcdkProcessProperties.class)
+@AutoConfigureOrder(Ordered.HIGHEST_PRECEDENCE)
+public class WcdkProcessAutoConfiguration {
+
+    @Bean
+    @ConditionalOnMissingBean
+    public WcdkProcessConnectionConfig wcdkProcessConnectionConfig(WcdkProcessProperties properties) {
+        return WcdkProcessConnectionConfig.builder()
+                .clientId(properties.getClientId())
+                .clientName(properties.getClientName())
+                .endpoint(properties.getEndpoint())
+                .username(properties.getUsername())
+                .password(properties.getPassword())
+                .callbackUrl(properties.getCallbackUrl())
+                .authFlg(properties.getAuthFlg())
+                .timeout(Duration.ofSeconds(properties.getTimeoutSeconds()))
+                .build();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public WcdkProcessServerConfig wcdkProcessServerConfig(WcdkProcessProperties properties) {
+        return WcdkProcessServerConfig.builder()
+                .baseUrl(properties.getEndpoint())
+                .username(properties.getUsername())
+                .password(properties.getPassword())
+                .authFlg(properties.getAuthFlg())
+                .timeout(Duration.ofSeconds(properties.getTimeoutSeconds()))
+                .build();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public HttpClient wcdkProcessHttpClient(WcdkProcessServerConfig serverConfig) {
+        return HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .connectTimeout(serverConfig.getTimeout())
+                .followRedirects(HttpClient.Redirect.NORMAL)
+                .build();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public ObjectMapper wcdkProcessObjectMapper() {
+        return new ObjectMapper().findAndRegisterModules();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public WcdkProcessClient wcdkProcessClient(HttpClient httpClient,
+                                              ObjectMapper objectMapper,
+                                              WcdkProcessConnectionConfig connectionConfig,
+                                              WcdkProcessServerConfig serverConfig) {
+        return new WcdkProcessClient(httpClient, objectMapper, connectionConfig, serverConfig);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public WcdkProcessFlowClient wcdkProcessFlowClient(WcdkProcessClient wcdkProcessClient) {
+        return new WcdkProcessFlowClient(wcdkProcessClient);
+    }
+
+    @Bean
+    @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
+    @ConditionalOnMissingBean
+    public ProcessBeanRegistry processBeanRegistry(ApplicationContext applicationContext) {
+        return new ProcessBeanRegistry(applicationContext);
+    }
+
+    @Bean
+    @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
+    @ConditionalOnMissingBean
+    public WcdkProcessBeanController wcdkProcessBeanController(ProcessBeanRegistry processBeanRegistry) {
+        return new WcdkProcessBeanController(processBeanRegistry);
+    }
+
+    @Bean
+    @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
+    @ConditionalOnMissingBean
+    public WcdkProcessAuthInterceptor wcdkProcessAuthInterceptor(WcdkProcessConnectionConfig connectionConfig) {
+        return new WcdkProcessAuthInterceptor(connectionConfig);
+    }
+
+    @Bean
+    @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
+    @ConditionalOnMissingBean
+    public WcdkProcessWebMvcConfigurer wcdkProcessWebMvcConfigurer(WcdkProcessAuthInterceptor wcdkProcessAuthInterceptor) {
+        return new WcdkProcessWebMvcConfigurer(wcdkProcessAuthInterceptor);
+    }
+
+    @Bean
+    @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
+    @ConditionalOnMissingBean(name = "wcdkProcessClientAutoRegisterRunner")
+    public ApplicationRunner wcdkProcessClientAutoRegisterRunner(WcdkProcessClient wcdkProcessClient,
+                                                                 ProcessBeanRegistry processBeanRegistry) {
+        return arguments -> {
+            wcdkProcessClient.registerClient(processBeanRegistry.getProcessBeanNames());
+        };
+    }
+}

@@ -1,14 +1,19 @@
 package com.wcdk.process.dto;
 
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 /**
- * 模型创建请求。
- *
- * @author WCDK
- * @date 2026/7/13
- */
+ * @auther WCDK
+ * @date 2026/7/16
+ * @version 1.0
+ **/
 @Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class ModelCreateRequest {
 
     private String modelName;
