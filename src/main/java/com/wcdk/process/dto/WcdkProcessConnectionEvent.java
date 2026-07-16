@@ -28,7 +28,7 @@ public class WcdkProcessConnectionEvent {
     private String processInstanceId;
 
     private String processDefinitionKey;
-
+    private String processDefinitionId;
     private String businessKey;
 
     private String processBeanName;
