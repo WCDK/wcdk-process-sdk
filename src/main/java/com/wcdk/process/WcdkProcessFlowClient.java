@@ -66,11 +66,20 @@ public class WcdkProcessFlowClient {
     }
 
     public DeploymentResponse deployModel(String modelId, String processBeanName) {
-        validateDeployModelRequest(modelId, processBeanName);
-        return wcdkProcessClient.post(
-                FLOWABLE_MODEL_PATH + "/" + modelId + "/deploy?processBeanName=" + encode(processBeanName),
-                null,
-                DeploymentResponse.class);
+        return deployModel(modelId, null, processBeanName);
+    }
+
+    public DeploymentResponse deployModel(String modelId, String clientId, String processBeanName) {
+        validateDeployModelRequest(modelId, clientId, processBeanName);
+        Map<String, Object> queryParams = new LinkedHashMap<>();
+        if (StringUtils.hasText(clientId)) {
+            queryParams.put("clientId", clientId.trim());
+        }
+        if (StringUtils.hasText(processBeanName)) {
+            queryParams.put("processBeanName", processBeanName.trim());
+        }
+        String path = appendQuery(FLOWABLE_MODEL_PATH + "/" + modelId + "/deploy", queryParams);
+        return wcdkProcessClient.post(path, null, DeploymentResponse.class);
     }
 
     public void deleteModel(String modelId) {
@@ -89,13 +98,38 @@ public class WcdkProcessFlowClient {
         wcdkProcessClient.delete(FLOWABLE_DEPLOY_PATH, queryParams);
     }
 
-    private void validateDeployModelRequest(String modelId, String processBeanName) {
+    private void validateDeployModelRequest(String modelId, String clientId, String processBeanName) {
         if (!StringUtils.hasText(modelId)) {
             throw new IllegalArgumentException("部署流程模型时模型ID不能为空");
         }
-        if (!StringUtils.hasText(processBeanName)) {
-            throw new IllegalArgumentException("部署流程模型时必须指定 processBean");
+        if (StringUtils.hasText(clientId) && !StringUtils.hasText(processBeanName)) {
+            throw new IllegalArgumentException("选择客户端时必须指定processName");
         }
+        if (!StringUtils.hasText(clientId) && StringUtils.hasText(processBeanName)) {
+            throw new IllegalArgumentException("选择processName时必须指定客户端");
+        }
+    }
+
+    private String appendQuery(String path, Map<String, Object> queryParams) {
+        if (queryParams == null || queryParams.isEmpty()) {
+            return path;
+        }
+        StringBuilder builder = new StringBuilder(path);
+        builder.append("?");
+        boolean first = true;
+        for (Map.Entry<String, Object> entry : queryParams.entrySet()) {
+            if (entry.getValue() == null) {
+                continue;
+            }
+            if (!first) {
+                builder.append("&");
+            }
+            builder.append(encode(entry.getKey()))
+                    .append("=")
+                    .append(encode(String.valueOf(entry.getValue())));
+            first = false;
+        }
+        return builder.toString();
     }
 
     private String encode(String value) {

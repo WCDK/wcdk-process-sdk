@@ -26,17 +26,16 @@ public class WcdkProcessBeanController {
     }
 
     @PostMapping("/{processBeanName}")
-    @SuppressWarnings("unchecked")
-    public void invoke(@PathVariable String processBeanName,
+    public ApiResponse<Object> invoke(@PathVariable String processBeanName,
                                       @RequestBody(required = false) WcdkProcessConnectionEvent request) {
-        if(processBeanName.equals("register_bak")){
-            System.out.println("流程客户端注册成功"+request.getMessage());
-            return;
+        if (processBeanName.equals("register_bak")) {
+//            System.out.println("流程客户端注册成功" + (request == null ? "" : request.getMessage()));
+            return ApiResponse.success(null);
         }
         WcdkProcessConnectionEvent event = request == null ? new WcdkProcessConnectionEvent() : request;
         if (!StringUtils.hasText(event.getProcessBeanName())) {
             event.setProcessBeanName(processBeanName);
         }
-        processBeanRegistry.invoke(processBeanName, event);
+        return ApiResponse.success(processBeanRegistry.invoke(processBeanName, event));
     }
 }

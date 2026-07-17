@@ -1,5 +1,6 @@
 package com.wcdk.process.support;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wcdk.process.annotation.ProcessBean;
 import com.wcdk.process.dto.WcdkProcessConnectionEvent;
 import jakarta.annotation.PostConstruct;
@@ -22,10 +23,13 @@ public class ProcessBeanRegistry {
 
     private final ApplicationContext applicationContext;
 
+    private final ObjectMapper objectMapper;
+
     private final Map<String, ProcessBeanInvoker> invokerMap = new LinkedHashMap<>();
 
-    public ProcessBeanRegistry(ApplicationContext applicationContext) {
+    public ProcessBeanRegistry(ApplicationContext applicationContext, ObjectMapper objectMapper) {
         this.applicationContext = applicationContext;
+        this.objectMapper = objectMapper;
     }
 
     @PostConstruct
@@ -61,26 +65,25 @@ public class ProcessBeanRegistry {
         if (method.getParameterCount() > 1) {
             throw new IllegalStateException("ProcessBean 标注的方法最多只能有一个参数，方法：" + method.getName());
         }
-        if (method.getParameterCount() == 1
-                && !WcdkProcessConnectionEvent.class.isAssignableFrom(method.getParameterTypes()[0])) {
-            throw new IllegalStateException("ProcessBean 标注的方法参数必须为 WcdkProcessConnectionEvent，方法：" + method.getName());
-        }
         if (invokerMap.containsKey(processBeanName)) {
             throw new IllegalStateException("流程处理接口名称重复：" + processBeanName);
         }
-        invokerMap.put(processBeanName, new ProcessBeanInvoker(applicationContext, beanName, method));
+        invokerMap.put(processBeanName, new ProcessBeanInvoker(applicationContext, objectMapper, beanName, method));
     }
 
     private static final class ProcessBeanInvoker {
 
         private final ApplicationContext applicationContext;
 
+        private final ObjectMapper objectMapper;
+
         private final String beanName;
 
         private final Method method;
 
-        private ProcessBeanInvoker(ApplicationContext applicationContext, String beanName, Method method) {
+        private ProcessBeanInvoker(ApplicationContext applicationContext, ObjectMapper objectMapper, String beanName, Method method) {
             this.applicationContext = applicationContext;
+            this.objectMapper = objectMapper;
             this.beanName = beanName;
             this.method = method;
         }
@@ -93,10 +96,23 @@ public class ProcessBeanRegistry {
                 if (targetMethod.getParameterCount() == 0) {
                     return targetMethod.invoke(bean);
                 }
-                return targetMethod.invoke(bean, event);
+                return targetMethod.invoke(bean, resolveArgument(targetMethod.getParameterTypes()[0], event));
             } catch (Exception exception) {
                 throw new IllegalStateException("执行流程处理接口失败：" + method.getName(), exception);
             }
+        }
+
+        private Object resolveArgument(Class<?> parameterType, WcdkProcessConnectionEvent event) {
+            if (WcdkProcessConnectionEvent.class.isAssignableFrom(parameterType)) {
+                return event;
+            }
+            Map<String, Object> payload = event == null || event.getPayload() == null
+                    ? new LinkedHashMap<>()
+                    : event.getPayload();
+            if (Map.class.isAssignableFrom(parameterType) || Object.class.equals(parameterType)) {
+                return payload;
+            }
+            return objectMapper.convertValue(payload, parameterType);
         }
     }
 }

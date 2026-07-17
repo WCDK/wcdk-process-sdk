@@ -28,6 +28,8 @@ public class WcdkProcessConnectionConfig {
 
     private final Duration timeout;
 
+    private final Duration activeReportInterval;
+
     private final String authFlg;
 
 

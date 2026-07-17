@@ -4,8 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wcdk.process.config.WcdkProcessAuthInterceptor;
 import com.wcdk.process.config.WcdkProcessWebMvcConfigurer;
 import com.wcdk.process.controller.WcdkProcessBeanController;
+import com.wcdk.process.support.WcdkProcessClientAutoRegisterRunner;
 import com.wcdk.process.support.ProcessBeanRegistry;
-import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureOrder;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -40,6 +40,7 @@ public class WcdkProcessAutoConfiguration {
                 .callbackUrl(properties.getCallbackUrl())
                 .authFlg(properties.getAuthFlg())
                 .timeout(Duration.ofSeconds(properties.getTimeoutSeconds()))
+                .activeReportInterval(Duration.ofSeconds(properties.getActiveReport()))
                 .build();
     }
 
@@ -89,8 +90,8 @@ public class WcdkProcessAutoConfiguration {
     @Bean
     @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
     @ConditionalOnMissingBean
-    public ProcessBeanRegistry processBeanRegistry(ApplicationContext applicationContext) {
-        return new ProcessBeanRegistry(applicationContext);
+    public ProcessBeanRegistry processBeanRegistry(ApplicationContext applicationContext, ObjectMapper objectMapper) {
+        return new ProcessBeanRegistry(applicationContext, objectMapper);
     }
 
     @Bean
@@ -117,10 +118,9 @@ public class WcdkProcessAutoConfiguration {
     @Bean
     @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
     @ConditionalOnMissingBean(name = "wcdkProcessClientAutoRegisterRunner")
-    public ApplicationRunner wcdkProcessClientAutoRegisterRunner(WcdkProcessClient wcdkProcessClient,
-                                                                 ProcessBeanRegistry processBeanRegistry) {
-        return arguments -> {
-            wcdkProcessClient.registerClient(processBeanRegistry.getProcessBeanNames());
-        };
+    public WcdkProcessClientAutoRegisterRunner wcdkProcessClientAutoRegisterRunner(WcdkProcessClient wcdkProcessClient,
+                                                                                   ProcessBeanRegistry processBeanRegistry,
+                                                                                   WcdkProcessConnectionConfig connectionConfig) {
+        return new WcdkProcessClientAutoRegisterRunner(wcdkProcessClient, processBeanRegistry, connectionConfig);
     }
 }

@@ -20,6 +20,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
 import java.time.Duration;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -39,7 +40,8 @@ class WcdkProcessAutoConfigurationTests {
                     "wcdk.process.endpoint=http://localhost:58082",
                     "wcdk.process.username=admin",
                     "wcdk.process.password=admin123",
-                    "wcdk.process.timeout-seconds=30"
+                    "wcdk.process.timeout-seconds=30",
+                    "wcdk.process.active-report=10"
             );
 
     @Test
@@ -67,6 +69,7 @@ class WcdkProcessAutoConfigurationTests {
             assertThat(config.getClientName()).isEqualTo("流程演示系统");
             assertThat(config.getEndpoint()).isEqualTo("http://localhost:58082");
             assertThat(config.getTimeout()).isEqualTo(Duration.ofSeconds(30));
+            assertThat(config.getActiveReportInterval()).isEqualTo(Duration.ofSeconds(10));
             assertThat(config.getAuthFlg()).isNull();
             assertThat(serverConfig.getBaseUrl()).isEqualTo("http://localhost:58082");
             assertThat(serverConfig.getUsername()).isEqualTo("admin");
@@ -137,13 +140,40 @@ class WcdkProcessAutoConfigurationTests {
     }
 
     @Test
-    void shouldRequireProcessBeanWhenDeployModel() {
+    void shouldInvokeAnnotatedMethodWithPayloadRequestParameter() {
+        contextRunner.withUserConfiguration(PayloadTestConfiguration.class)
+                .run(context -> {
+                    MockMvc mockMvc = MockMvcBuilders.webAppContextSetup((WebApplicationContext) context.getSourceApplicationContext()).build();
+                    mockMvc.perform(post("/wcdk_process/payloadProcess")
+                                    .contentType(MediaType.APPLICATION_JSON)
+                                    .content("""
+                                            {
+                                              "payload":{
+                                                "processNo":"LC-001",
+                                                "formData":{
+                                                  "amount":100
+                                                }
+                                              }
+                                            }
+                                            """))
+                            .andExpect(status().isOk())
+                            .andExpect(jsonPath("$.code").value(200))
+                            .andExpect(jsonPath("$.data").value("LC-001"));
+
+                    PayloadProcessBeanHandler handler = context.getBean(PayloadProcessBeanHandler.class);
+                    assertThat(handler.getLastRequest().get().getProcessNo()).isEqualTo("LC-001");
+                    assertThat(handler.getLastRequest().get().getFormData()).containsEntry("amount", 100);
+                });
+    }
+
+    @Test
+    void shouldRequireCompleteBindingWhenDeployModel() {
         contextRunner.run(context -> {
             WcdkProcessFlowClient flowClient = context.getBean(WcdkProcessFlowClient.class);
 
-            assertThatThrownBy(() -> flowClient.deployModel("model-001", ""))
+            assertThatThrownBy(() -> flowClient.deployModel("model-001", "demo-client", ""))
                     .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessage("部署流程模型时必须指定 processBean");
+                    .hasMessage("选择客户端时必须指定processName");
         });
     }
 
@@ -168,6 +198,53 @@ class WcdkProcessAutoConfigurationTests {
 
         public AtomicReference<WcdkProcessConnectionEvent> getLastEvent() {
             return lastEvent;
+        }
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    static class PayloadTestConfiguration {
+
+        @Bean
+        PayloadProcessBeanHandler payloadProcessBeanHandler() {
+            return new PayloadProcessBeanHandler();
+        }
+    }
+
+    static class PayloadProcessBeanHandler {
+
+        private final AtomicReference<PayloadRequest> lastRequest = new AtomicReference<>();
+
+        @ProcessBean("payloadProcess")
+        public String handle(PayloadRequest request) {
+            lastRequest.set(request);
+            return request.getProcessNo();
+        }
+
+        public AtomicReference<PayloadRequest> getLastRequest() {
+            return lastRequest;
+        }
+    }
+
+    static class PayloadRequest {
+
+        private String processNo;
+
+        private Map<String, Object> formData;
+
+        public String getProcessNo() {
+            return processNo;
+        }
+
+        public void setProcessNo(String processNo) {
+            this.processNo = processNo;
+        }
+
+        public Map<String, Object> getFormData() {
+            return formData;
+        }
+
+        public void setFormData(Map<String, Object> formData) {
+            this.formData = formData;
         }
     }
 }

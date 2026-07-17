@@ -20,6 +20,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -72,9 +75,56 @@ class WcdkProcessClientAutoRegisterRunnerTests {
         }
     }
 
+    @Test
+    void shouldSendRegisterInfoByActiveReportInterval() throws Exception {
+        AtomicReference<String> requestBodyRef = new AtomicReference<>();
+        AtomicInteger requestCount = new AtomicInteger();
+        CountDownLatch secondRegisterLatch = new CountDownLatch(2);
+        HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/sdk/wcdkprocess/clients/register",
+                exchange -> handleRegister(exchange, requestBodyRef, requestCount, secondRegisterLatch));
+        server.start();
+        try {
+            int port = server.getAddress().getPort();
+            new WebApplicationContextRunner()
+                    .withConfiguration(AutoConfigurations.of(WebMvcAutoConfiguration.class, WcdkProcessAutoConfiguration.class))
+                    .withUserConfiguration(TestConfiguration.class)
+                    .withPropertyValues(
+                            "wcdk.process.client-id=demo-client",
+                            "wcdk.process.client-name=流程演示系统",
+                            "wcdk.process.endpoint=http://127.0.0.1:" + port,
+                            "wcdk.process.username=admin",
+                            "wcdk.process.password=admin123",
+                            "wcdk.process.timeout-seconds=30",
+                            "wcdk.process.active-report=1",
+                            "wcdk.process.callback-url=http://127.0.0.1:58083"
+                    )
+                    .run(context -> {
+                        context.getBean(org.springframework.boot.ApplicationRunner.class).run(applicationArguments);
+                        assertThat(secondRegisterLatch.await(3, TimeUnit.SECONDS)).isTrue();
+                        assertThat(requestCount.get()).isGreaterThanOrEqualTo(2);
+                    });
+        } finally {
+            server.stop(0);
+        }
+    }
+
     private void handleRegister(HttpExchange exchange, AtomicReference<String> requestBodyRef) throws IOException {
+        handleRegister(exchange, requestBodyRef, null, null);
+    }
+
+    private void handleRegister(HttpExchange exchange,
+                                AtomicReference<String> requestBodyRef,
+                                AtomicInteger requestCount,
+                                CountDownLatch countDownLatch) throws IOException {
         try (InputStream inputStream = exchange.getRequestBody()) {
             requestBodyRef.set(new String(inputStream.readAllBytes(), StandardCharsets.UTF_8));
+        }
+        if (requestCount != null) {
+            requestCount.incrementAndGet();
+        }
+        if (countDownLatch != null) {
+            countDownLatch.countDown();
         }
         byte[] responseBytes = """
                 {"code":200,"message":"处理成功","data":null}
