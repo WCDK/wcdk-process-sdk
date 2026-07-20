@@ -18,9 +18,12 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * @auther WCDK
@@ -80,6 +83,18 @@ public class WcdkProcessClient {
         return execute(buildRequest("POST", path, body), objectMapper.getTypeFactory().constructType(responseType));
     }
 
+    public void putForVoid(String path, Object body) {
+        execute(buildRequest("PUT", path, body), objectMapper.getTypeFactory().constructType(Void.class));
+    }
+
+    public <T> T put(String path, Object body, Class<T> responseType) {
+        return execute(buildRequest("PUT", path, body), objectMapper.getTypeFactory().constructType(responseType));
+    }
+
+    public <T> T put(String path, Object body, TypeReference<T> responseType) {
+        return execute(buildRequest("PUT", path, body), objectMapper.getTypeFactory().constructType(responseType));
+    }
+
     public <T> T get(String path, Class<T> responseType) {
         return execute(buildRequest("GET", path, null), objectMapper.getTypeFactory().constructType(responseType));
     }
@@ -90,6 +105,22 @@ public class WcdkProcessClient {
 
     public <T> T get(String path, Map<String, ?> queryParams, Class<T> responseType) {
         return execute(buildRequest("GET", appendQuery(path, queryParams), null),
+                objectMapper.getTypeFactory().constructType(responseType));
+    }
+
+    public <T> T get(String path, Map<String, ?> queryParams, TypeReference<T> responseType) {
+        return execute(buildRequest("GET", appendQuery(path, queryParams), null),
+                objectMapper.getTypeFactory().constructType(responseType));
+    }
+
+    public <T> T postMultipart(String path,
+                               Map<String, ?> textParts,
+                               String filePartName,
+                               String fileName,
+                               String contentType,
+                               byte[] fileContent,
+                               Class<T> responseType) {
+        return execute(buildMultipartRequest(path, textParts, filePartName, fileName, contentType, fileContent),
                 objectMapper.getTypeFactory().constructType(responseType));
     }
 
@@ -107,12 +138,68 @@ public class WcdkProcessClient {
                 .header(HttpHeaders.AUTHORIZATION, buildAuthorization());
         if ("POST".equals(method)) {
             builder.POST(HttpRequest.BodyPublishers.ofString(writeBody(body), StandardCharsets.UTF_8));
+        } else if ("PUT".equals(method)) {
+            builder.PUT(HttpRequest.BodyPublishers.ofString(writeBody(body), StandardCharsets.UTF_8));
         } else if ("DELETE".equals(method)) {
             builder.DELETE();
         } else {
             builder.GET();
         }
         return builder.build();
+    }
+
+    private HttpRequest buildMultipartRequest(String path,
+                                              Map<String, ?> textParts,
+                                              String filePartName,
+                                              String fileName,
+                                              String contentType,
+                                              byte[] fileContent) {
+        if (!StringUtils.hasText(filePartName)) {
+            throw new IllegalArgumentException("文件参数名不能为空");
+        }
+        if (!StringUtils.hasText(fileName)) {
+            throw new IllegalArgumentException("文件名不能为空");
+        }
+        if (fileContent == null || fileContent.length == 0) {
+            throw new IllegalArgumentException("文件内容不能为空");
+        }
+        String boundary = "----WcdkProcessBoundary" + UUID.randomUUID();
+        HttpRequest.BodyPublisher bodyPublisher = buildMultipartBody(boundary, textParts, filePartName,
+                fileName, contentType, fileContent);
+        return HttpRequest.newBuilder()
+                .uri(URI.create(buildUrl(path)))
+                .timeout(serverConfig.getTimeout())
+                .header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
+                .header(HttpHeaders.CONTENT_TYPE, MediaType.MULTIPART_FORM_DATA_VALUE + "; boundary=" + boundary)
+                .header(HttpHeaders.AUTHORIZATION, buildAuthorization())
+                .POST(bodyPublisher)
+                .build();
+    }
+
+    private HttpRequest.BodyPublisher buildMultipartBody(String boundary,
+                                                         Map<String, ?> textParts,
+                                                         String filePartName,
+                                                         String fileName,
+                                                         String contentType,
+                                                         byte[] fileContent) {
+        List<byte[]> byteArrays = new ArrayList<>();
+        if (textParts != null) {
+            for (Map.Entry<String, ?> entry : textParts.entrySet()) {
+                if (entry.getValue() == null) {
+                    continue;
+                }
+                byteArrays.add(("--" + boundary + "\r\n"
+                        + "Content-Disposition: form-data; name=\"" + entry.getKey() + "\"\r\n\r\n"
+                        + entry.getValue() + "\r\n").getBytes(StandardCharsets.UTF_8));
+            }
+        }
+        String actualContentType = StringUtils.hasText(contentType) ? contentType : MediaType.APPLICATION_OCTET_STREAM_VALUE;
+        byteArrays.add(("--" + boundary + "\r\n"
+                + "Content-Disposition: form-data; name=\"" + filePartName + "\"; filename=\"" + fileName + "\"\r\n"
+                + "Content-Type: " + actualContentType + "\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+        byteArrays.add(fileContent);
+        byteArrays.add(("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
+        return HttpRequest.BodyPublishers.ofByteArrays(byteArrays);
     }
 
     private String buildUrl(String path) {

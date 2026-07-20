@@ -5,7 +5,7 @@ import lombok.Data;
 
 /**
  * @auther WCDK
- * @date 2026/7/16
+ * @date 2026/7/10
  * @version 1.0
  **/
 @Data
@@ -23,4 +23,6 @@ public class TaskResponse {
     private String processInstanceId;
 
     private String processDefinitionId;
+
+    private Long processRequestId;
 }
