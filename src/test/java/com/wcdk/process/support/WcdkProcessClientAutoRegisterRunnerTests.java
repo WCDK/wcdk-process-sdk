@@ -13,12 +13,17 @@ import org.springframework.boot.DefaultApplicationArguments;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.autoconfigure.web.servlet.WebMvcAutoConfiguration;
 import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
+import org.springframework.cloud.client.ServiceInstance;
+import org.springframework.cloud.client.loadbalancer.LoadBalancerClient;
+import org.springframework.cloud.client.loadbalancer.LoadBalancerRequest;
+import org.springframework.cloud.client.loadbalancer.Request;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetSocketAddress;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -109,6 +114,41 @@ class WcdkProcessClientAutoRegisterRunnerTests {
         }
     }
 
+    @Test
+    void shouldAutoRegisterByLoadBalancedEndpointWithoutCallbackUrl() throws Exception {
+        AtomicReference<String> requestBodyRef = new AtomicReference<>();
+        HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/sdk/wcdkprocess/clients/register", exchange -> handleRegister(exchange, requestBodyRef));
+        server.start();
+        try {
+            int port = server.getAddress().getPort();
+            new WebApplicationContextRunner()
+                    .withConfiguration(AutoConfigurations.of(WebMvcAutoConfiguration.class, WcdkProcessAutoConfiguration.class))
+                    .withUserConfiguration(TestConfiguration.class, LoadBalancerTestConfiguration.class)
+                    .withPropertyValues(
+                            "test.process.server-port=" + port,
+                            "wcdk.process.client-id=demo-client",
+                            "wcdk.process.client-name=流程演示系统",
+                            "wcdk.process.endpoint=lb://wcdk-process",
+                            "wcdk.process.service-name=wcdk-process-demo",
+                            "wcdk.process.username=admin",
+                            "wcdk.process.password=admin123",
+                            "wcdk.process.timeout-seconds=30"
+                    )
+                    .run(context -> {
+                        assertThat(context).hasNotFailed();
+                        context.getBean(org.springframework.boot.ApplicationRunner.class).run(applicationArguments);
+                        assertThat(requestBodyRef.get()).isNotBlank();
+                        JsonNode root = objectMapper.readTree(requestBodyRef.get());
+                        assertThat(root.get("clientId").asText()).isEqualTo("demo-client");
+                        assertThat(root.get("callbackUrl").isNull()).isTrue();
+                        assertThat(root.get("serviceName").asText()).isEqualTo("wcdk-process-demo");
+                    });
+        } finally {
+            server.stop(0);
+        }
+    }
+
     private void handleRegister(HttpExchange exchange, AtomicReference<String> requestBodyRef) throws IOException {
         handleRegister(exchange, requestBodyRef, null, null);
     }
@@ -149,6 +189,102 @@ class WcdkProcessClientAutoRegisterRunnerTests {
         @ProcessBean("demoProcess")
         public String handle(WcdkProcessConnectionEvent event) {
             return event == null ? "" : event.getBusinessKey();
+        }
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    static class LoadBalancerTestConfiguration {
+
+        @Bean
+        LoadBalancerClient loadBalancerClient(org.springframework.core.env.Environment environment) {
+            int port = environment.getRequiredProperty("test.process.server-port", Integer.class);
+            return new FixedLoadBalancerClient(port);
+        }
+    }
+
+    static class FixedLoadBalancerClient implements LoadBalancerClient {
+
+        private final int port;
+
+        FixedLoadBalancerClient(int port) {
+            this.port = port;
+        }
+
+        @Override
+        public ServiceInstance choose(String serviceId) {
+            return new FixedServiceInstance(serviceId, port);
+        }
+
+        @Override
+        public <T> ServiceInstance choose(String serviceId, Request<T> request) {
+            return choose(serviceId);
+        }
+
+        @Override
+        public <T> T execute(String serviceId, LoadBalancerRequest<T> request) throws IOException {
+            return applyRequest(request, choose(serviceId));
+        }
+
+        @Override
+        public <T> T execute(String serviceId, ServiceInstance serviceInstance, LoadBalancerRequest<T> request) throws IOException {
+            return applyRequest(request, serviceInstance);
+        }
+
+        @Override
+        public URI reconstructURI(ServiceInstance instance, URI original) {
+            return instance.getUri().resolve(original.getRawPath());
+        }
+
+        private <T> T applyRequest(LoadBalancerRequest<T> request, ServiceInstance serviceInstance) throws IOException {
+            try {
+                return request.apply(serviceInstance);
+            } catch (IOException exception) {
+                throw exception;
+            } catch (Exception exception) {
+                throw new IOException(exception);
+            }
+        }
+    }
+
+    static class FixedServiceInstance implements ServiceInstance {
+
+        private final String serviceId;
+
+        private final int port;
+
+        FixedServiceInstance(String serviceId, int port) {
+            this.serviceId = serviceId;
+            this.port = port;
+        }
+
+        @Override
+        public String getServiceId() {
+            return serviceId;
+        }
+
+        @Override
+        public String getHost() {
+            return "127.0.0.1";
+        }
+
+        @Override
+        public int getPort() {
+            return port;
+        }
+
+        @Override
+        public boolean isSecure() {
+            return false;
+        }
+
+        @Override
+        public URI getUri() {
+            return URI.create("http://127.0.0.1:" + port);
+        }
+
+        @Override
+        public java.util.Map<String, String> getMetadata() {
+            return java.util.Map.of();
         }
     }
 }

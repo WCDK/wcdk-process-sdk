@@ -13,7 +13,11 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplicat
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.ApplicationContext;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.cloud.client.loadbalancer.LoadBalancerClient;
 import org.springframework.core.Ordered;
+import org.springframework.core.env.Environment;
+import org.springframework.util.StringUtils;
 
 import java.net.http.HttpClient;
 import java.time.Duration;
@@ -30,7 +34,7 @@ public class WcdkProcessAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public WcdkProcessConnectionConfig wcdkProcessConnectionConfig(WcdkProcessProperties properties) {
+    public WcdkProcessConnectionConfig wcdkProcessConnectionConfig(WcdkProcessProperties properties, Environment environment) {
         return WcdkProcessConnectionConfig.builder()
                 .clientId(properties.getClientId())
                 .clientName(properties.getClientName())
@@ -38,6 +42,7 @@ public class WcdkProcessAutoConfiguration {
                 .username(properties.getUsername())
                 .password(properties.getPassword())
                 .callbackUrl(properties.getCallbackUrl())
+                .serviceName(resolveServiceName(properties, environment))
                 .authFlg(properties.getAuthFlg())
                 .timeout(Duration.ofSeconds(properties.getTimeoutSeconds()))
                 .activeReportInterval(Duration.ofSeconds(properties.getActiveReport()))
@@ -77,8 +82,9 @@ public class WcdkProcessAutoConfiguration {
     public WcdkProcessClient wcdkProcessClient(HttpClient httpClient,
                                               ObjectMapper objectMapper,
                                               WcdkProcessConnectionConfig connectionConfig,
-                                              WcdkProcessServerConfig serverConfig) {
-        return new WcdkProcessClient(httpClient, objectMapper, connectionConfig, serverConfig);
+                                              WcdkProcessServerConfig serverConfig,
+                                              ObjectProvider<LoadBalancerClient> loadBalancerClientProvider) {
+        return new WcdkProcessClient(httpClient, objectMapper, connectionConfig, serverConfig, loadBalancerClientProvider);
     }
 
     @Bean
@@ -122,5 +128,12 @@ public class WcdkProcessAutoConfiguration {
                                                                                    ProcessBeanRegistry processBeanRegistry,
                                                                                    WcdkProcessConnectionConfig connectionConfig) {
         return new WcdkProcessClientAutoRegisterRunner(wcdkProcessClient, processBeanRegistry, connectionConfig);
+    }
+
+    private String resolveServiceName(WcdkProcessProperties properties, Environment environment) {
+        if (StringUtils.hasText(properties.getServiceName())) {
+            return properties.getServiceName().trim();
+        }
+        return environment.getProperty("spring.application.name");
     }
 }

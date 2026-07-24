@@ -7,20 +7,22 @@ import lombok.NoArgsConstructor;
 
 /**
  * @auther WCDK
- * @date 2026/7/16
+ * @date 2026/7/15
  * @version 1.0
  **/
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ProcessRequestApproveRequest {
+public class ProcessDesignerExportEdgeRequest {
 
-    private String taskId;
+    private String id;
 
-    private Boolean approved;
+    private String sourceId;
 
-    private String approvalAction;
+    private String targetId;
 
-    private String comment;
+    private String name;
+
+    private String conditionExpression;
 }

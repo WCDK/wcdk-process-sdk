@@ -140,7 +140,32 @@ class WcdkProcessAutoConfigurationTests {
     }
 
     @Test
-    void shouldInvokeAnnotatedMethodWithPayloadRequestParameter() {
+    void shouldAcceptRegisterCallbackWithServerEventPayload() {
+        contextRunner.withPropertyValues("wcdk.process.auth-flg=WCDK")
+                .run(context -> {
+                    MockMvc mockMvc = MockMvcBuilders.webAppContextSetup((WebApplicationContext) context.getSourceApplicationContext()).build();
+                    mockMvc.perform(post("/wcdk_process/register_bak")
+                                    .header("WCDK_AUTH", "WCDK")
+                                    .contentType(MediaType.APPLICATION_JSON)
+                                    .content("""
+                                            {
+                                              "clientId":"wcdk-process-demo",
+                                              "clientName":"wcdk-process-demo",
+                                              "processBeanName":"register_bak",
+                                              "eventType":"REGISTER_SUCCESS",
+                                              "message":"客户端注册成功",
+                                              "eventTime":"2026-07-23T16:00:00",
+                                              "errorMessage":null,
+                                              "futureField":"兼容服务端新增字段"
+                                            }
+                                            """))
+                            .andExpect(status().isOk())
+                            .andExpect(jsonPath("$.code").value(200));
+                });
+    }
+
+    @Test
+    void shouldInvokeAnnotatedMethodWithRequestParameter() {
         contextRunner.withUserConfiguration(PayloadTestConfiguration.class)
                 .run(context -> {
                     MockMvc mockMvc = MockMvcBuilders.webAppContextSetup((WebApplicationContext) context.getSourceApplicationContext()).build();
@@ -148,11 +173,9 @@ class WcdkProcessAutoConfigurationTests {
                                     .contentType(MediaType.APPLICATION_JSON)
                                     .content("""
                                             {
-                                              "payload":{
-                                                "processNo":"LC-001",
-                                                "formData":{
-                                                  "amount":100
-                                                }
+                                              "businessKey":"LC-001",
+                                              "relatedFormData":{
+                                                "amount":100
                                               }
                                             }
                                             """))
@@ -161,8 +184,8 @@ class WcdkProcessAutoConfigurationTests {
                             .andExpect(jsonPath("$.data").value("LC-001"));
 
                     PayloadProcessBeanHandler handler = context.getBean(PayloadProcessBeanHandler.class);
-                    assertThat(handler.getLastRequest().get().getProcessNo()).isEqualTo("LC-001");
-                    assertThat(handler.getLastRequest().get().getFormData()).containsEntry("amount", 100);
+                    assertThat(handler.getLastRequest().get().getBusinessKey()).isEqualTo("LC-001");
+                    assertThat(handler.getLastRequest().get().getRelatedFormData()).containsEntry("amount", 100);
                 });
     }
 
@@ -217,7 +240,7 @@ class WcdkProcessAutoConfigurationTests {
         @ProcessBean("payloadProcess")
         public String handle(PayloadRequest request) {
             lastRequest.set(request);
-            return request.getProcessNo();
+            return request.getBusinessKey();
         }
 
         public AtomicReference<PayloadRequest> getLastRequest() {
@@ -227,24 +250,24 @@ class WcdkProcessAutoConfigurationTests {
 
     static class PayloadRequest {
 
-        private String processNo;
+        private String businessKey;
 
-        private Map<String, Object> formData;
+        private Map<String, Object> relatedFormData;
 
-        public String getProcessNo() {
-            return processNo;
+        public String getBusinessKey() {
+            return businessKey;
         }
 
-        public void setProcessNo(String processNo) {
-            this.processNo = processNo;
+        public void setBusinessKey(String businessKey) {
+            this.businessKey = businessKey;
         }
 
-        public Map<String, Object> getFormData() {
-            return formData;
+        public Map<String, Object> getRelatedFormData() {
+            return relatedFormData;
         }
 
-        public void setFormData(Map<String, Object> formData) {
-            this.formData = formData;
+        public void setRelatedFormData(Map<String, Object> relatedFormData) {
+            this.relatedFormData = relatedFormData;
         }
     }
 }

@@ -5,22 +5,26 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.Map;
+
 /**
  * @auther WCDK
- * @date 2026/7/16
+ * @date 2026/7/10
  * @version 1.0
  **/
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ProcessRequestApproveRequest {
+public class TaskCompleteRequest {
 
+    /**
+     * 任务ID
+     */
     private String taskId;
 
-    private Boolean approved;
-
-    private String approvalAction;
-
-    private String comment;
+    /**
+     * 办理变量
+     */
+    private Map<String, Object> variables;
 }

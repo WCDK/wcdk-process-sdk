@@ -7,6 +7,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wcdk.process.common.ApiResponse;
 import com.wcdk.process.dto.WcdkProcessClientRegisterRequest;
 import com.wcdk.process.dto.WcdkProcessConnectionEvent;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.cloud.client.ServiceInstance;
+import org.springframework.cloud.client.loadbalancer.LoadBalancerClient;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.util.StringUtils;
@@ -36,6 +39,8 @@ public class WcdkProcessClient {
 
     private static final String CALLBACK_PATH = "/sdk/wcdkprocess/callback";
 
+    private static final String LOAD_BALANCER_SCHEME = "lb://";
+
     private final HttpClient httpClient;
 
     private final ObjectMapper objectMapper;
@@ -44,14 +49,25 @@ public class WcdkProcessClient {
 
     private final WcdkProcessServerConfig serverConfig;
 
+    private final ObjectProvider<LoadBalancerClient> loadBalancerClientProvider;
+
     public WcdkProcessClient(HttpClient httpClient,
                              ObjectMapper objectMapper,
                              WcdkProcessConnectionConfig connectionConfig,
-                             WcdkProcessServerConfig serverConfig) {
+                             WcdkProcessServerConfig serverConfig,
+                             ObjectProvider<LoadBalancerClient> loadBalancerClientProvider) {
         this.httpClient = httpClient;
         this.objectMapper = objectMapper;
         this.connectionConfig = connectionConfig;
         this.serverConfig = serverConfig;
+        this.loadBalancerClientProvider = loadBalancerClientProvider;
+    }
+
+    public WcdkProcessClient(HttpClient httpClient,
+                             ObjectMapper objectMapper,
+                             WcdkProcessConnectionConfig connectionConfig,
+                             WcdkProcessServerConfig serverConfig) {
+        this(httpClient, objectMapper, connectionConfig, serverConfig, null);
     }
 
     public void registerClient(Set<String> processBeanNames) {
@@ -61,6 +77,7 @@ public class WcdkProcessClient {
                 .username(connectionConfig.getUsername())
                 .password(connectionConfig.getPassword())
                 .callbackUrl(connectionConfig.getCallbackUrl())
+                .serviceName(connectionConfig.getServiceName())
                 .authFlg(connectionConfig.getAuthFlg())
                 .processBeanNames(processBeanNames)
                 .build();
@@ -203,13 +220,36 @@ public class WcdkProcessClient {
     }
 
     private String buildUrl(String path) {
-        String baseUrl = serverConfig.getBaseUrl();
+        String baseUrl = resolveBaseUrl(serverConfig.getBaseUrl());
         if (!StringUtils.hasText(path)) {
             return trimTrailingSlash(baseUrl);
         }
         String normalizedBaseUrl = trimTrailingSlash(baseUrl);
         String normalizedPath = path.startsWith("/") ? path : "/" + path;
         return normalizedBaseUrl + normalizedPath;
+    }
+
+    private String resolveBaseUrl(String baseUrl) {
+        String trimmedBaseUrl = trimTrailingSlash(baseUrl);
+        if (!trimmedBaseUrl.startsWith(LOAD_BALANCER_SCHEME)) {
+            return trimmedBaseUrl;
+        }
+        String servicePath = trimmedBaseUrl.substring(LOAD_BALANCER_SCHEME.length());
+        int pathIndex = servicePath.indexOf('/');
+        String serviceName = pathIndex < 0 ? servicePath : servicePath.substring(0, pathIndex);
+        String contextPath = pathIndex < 0 ? "" : servicePath.substring(pathIndex);
+        if (!StringUtils.hasText(serviceName)) {
+            throw new WcdkProcessClientException("lb:// 地址必须指定服务名");
+        }
+        LoadBalancerClient loadBalancerClient = loadBalancerClientProvider == null ? null : loadBalancerClientProvider.getIfAvailable();
+        if (loadBalancerClient == null) {
+            throw new WcdkProcessClientException("使用 lb:// endpoint 时必须引入并配置 Spring Cloud LoadBalancer");
+        }
+        ServiceInstance serviceInstance = loadBalancerClient.choose(serviceName.trim());
+        if (serviceInstance == null) {
+            throw new WcdkProcessClientException("未从注册中心找到服务实例：" + serviceName.trim());
+        }
+        return trimTrailingSlash(serviceInstance.getUri().toString()) + trimTrailingSlash(contextPath);
     }
 
     private String trimTrailingSlash(String value) {

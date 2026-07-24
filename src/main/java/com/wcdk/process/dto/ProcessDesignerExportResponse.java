@@ -5,22 +5,24 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+
 /**
  * @auther WCDK
- * @date 2026/7/16
+ * @date 2026/7/15
  * @version 1.0
  **/
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ProcessRequestApproveRequest {
+public class ProcessDesignerExportResponse {
 
-    private String taskId;
+    private String fileName;
 
-    private Boolean approved;
+    private String contentType;
 
-    private String approvalAction;
+    private String contentBase64;
 
-    private String comment;
+    private List<String> skippedNodeLabels;
 }

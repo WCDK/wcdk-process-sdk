@@ -5,18 +5,19 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.Map;
 import java.util.Set;
 
 /**
- * @version 1.0
  * @auther WCDK
  * @date 2026/7/16
+ * @version 1.0
  **/
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class WcdkProcessClientRegisterRequest {
+public class WcdkProcessClientDefinition {
 
     private String clientId;
 
@@ -26,11 +27,7 @@ public class WcdkProcessClientRegisterRequest {
 
     private String serviceName;
 
-    private String username;
-
-    private String password;
-
-    private String authFlg;
+    private Map<String, String> callbackHeaders;
 
     private Set<String> processBeanNames;
 }
